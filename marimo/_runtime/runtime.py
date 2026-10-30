@@ -2003,27 +2003,19 @@ class Kernel:
     async def edit_cells(self, request: EditCellsCommand) -> None:
         """Apply a notebook edit to the graph, then run what follows from it.
 
-        Changed code is registered as stale, not run. The kernel only
-        takes code for cells it has: a cell it has never seen arrives
-        with the run that first carries it, and code pending from an
-        instantiation without a run is replaced in place. Deletions and
-        configs then apply together, and only their consequences run:
+        Code arrives with runs. A cell the kernel has run keeps its code
+        until the next run carries new code, so typing is never compiled
+        here; only code pending from an instantiation that has not run
+        is replaced, so that run uses what the notebook has. Deletions
+        and configs apply together, and only their consequences run:
         cells that depended on a deleted cell, and under autorun, stale
         cells the edit enabled.
         """
-        edits: list[ExecuteCellCommand] = []
         for cell_id, code in request.codes.items():
-            command = ExecuteCellCommand(cell_id=cell_id, code=code)
-            if cell_id in self.graph.cells:
-                edits.append(command)
-            elif cell_id in self._uninstantiated_execution_requests:
-                self._uninstantiated_execution_requests[cell_id] = command
-        if edits:
-            self.mutate_graph(
-                edits,
-                deletion_requests=[],
-                cells_starting_stale={edit.cell_id for edit in edits},
-            )
+            if cell_id in self._uninstantiated_execution_requests:
+                self._uninstantiated_execution_requests[cell_id] = (
+                    ExecuteCellCommand(cell_id=cell_id, code=code)
+                )
         deletions = [
             DeleteCellCommand(cell_id=cell_id)
             for cell_id in request.delete_ids
